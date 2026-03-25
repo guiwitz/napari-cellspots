@@ -1,0 +1,24 @@
+name: napari-cellspots
+display_name: Cellspots
+contributions:
+  commands:
+    - id: napari-cellspots.get_reader
+      title: Read ICS/IDS files (Cellspots)
+      python_name: napari_cellspots._reader:napari_get_reader
+    - id: napari-cellspots.processing_widget
+      title: Cellspots Processing (2D)
+      python_name: napari_cellspots._widget1:CellspotsProcessingWidget
+    - id: napari-cellspots.polar_widget
+      title: Cellspots Polar Plot
+      python_name: napari_cellspots._widget2:CellspotsPolarWidget
+  readers:
+    - command: napari-cellspots.get_reader
+      accepts_directories: false
+      filename_patterns:
+        - "*.ics"
+        - "*.ids"
+  widgets:
+    - command: napari-cellspots.processing_widget
+      display_name: Cellspots Processing (2D)
+    - command: napari-cellspots.polar_widget
+      display_name: Cellspots Polar Plot

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "napari-cellspots"
+version = "0.1.0"
+description = "Napari plugin for 2D image analysis: ICS reader, cell/spot segmentation, polar plot"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-image",
+    "tifffile",
+    "matplotlib",
+]
+
+[project.entry-points."napari.manifest"]
+napari-cellspots = "napari_cellspots:napari.yaml"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"napari_cellspots" = ["napari.yaml"]

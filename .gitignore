@@ -1,0 +1,25 @@
+# pyc files
+*.pyc
+# distribution files
+dist/
+build/
+*.egg
+# virtual environment
+venv/
+# IDE files
+.idea/
+.vscode/
+# logslogs/
+# coverage reports
+.coverage
+htmlcov/
+# pytest cache
+.pytest_cache/
+# mypy cache
+.mypy_cache/
+# DS_Store files
+.DS_Store
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# egg-info
+*.egg-info/
