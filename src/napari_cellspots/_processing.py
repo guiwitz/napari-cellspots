@@ -11,7 +11,6 @@ import pandas as pd
 import skimage.filters
 import skimage.segmentation
 import skimage.transform
-from sympy import comp
 import tifffile
 from scipy import ndimage as ndi
 
