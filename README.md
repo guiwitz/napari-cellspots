@@ -9,15 +9,25 @@ A napari plugin to analyse microscopy images of cells containing spot-like featu
 ## Features
 
 - **ICS/IDS file reader** — opens files via the pyics library directly in napari
-- **Processing widget** — browse and select ICS/IDS files, run 2D cell and spot segmentation, and visualise results coloured by nucleus ID or distance to nucleus
+- **Processing widget** — browse and select ICS/IDS files, run 2D cell and spot segmentation, and visualise results coloured by nucleus ID or distance to nucleus. Corect cell segmentation manually and compute basic distribution statistics of detected spots per nucleus.
 - **Polar plot widget** — visualise detected spot distributions in a polar coordinate plot per nucleus
 
 ## Installation
 
+### pixi
+
+You can use pixi to simplify the instatllation of the plugin and all extensions. For this:
+1. Install pixi: https://pixi.prefix.dev/latest/installation/
+2. Create folder and copy the [`pixi.toml`](pixi.toml) and [`pixi.lock`](pixi.lock) files from this repository into it (you can clone the repo or just download the two files).
+3. Open a terminal, move to that folder and type `pixi install --all --frozen` to install the plugin and all dependencies.
+4. In the current location, launch napari with `pixi run napari` or Jupyter with `pixi run jupyter lab`.
+5. Alternatively, you can launch from any other location. For example to launch Jupyter Lab, type `pixi run --manifest-path /path/to/pixi.toml jupyter lab`.
+
+### conda
 First create an environment for napari. For example with conda:
 
 ```bash
-conda create -n napari-cellspots python=3.13 napari pyqt -c conda-forge
+conda create -n napari-cellspots python=3.12 napari pyqt -c conda-forge
 conda activate napari-cellspots
 ```
 
