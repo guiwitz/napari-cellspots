@@ -26,6 +26,7 @@ def process_folder2D(
     cell_proba: float,
     cell_channel: int | None,
     nucl_channel: int,
+    spot_channel: int | None,
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
 ) -> None:
@@ -43,6 +44,8 @@ def process_folder2D(
         Channel index for cell segmentation, or ``None`` to skip.
     nucl_channel : int
         Channel index for nucleus segmentation.
+    spot_channel : int or None
+        Channel index for spot detection, or ``None`` to skip.
     diameter_nucl : int
         Expected nucleus diameter in pixels.
     diameter_cell : int
@@ -57,7 +60,7 @@ def process_folder2D(
         + sorted(folder_path.glob("*.tif"))
     )
     for image_file in image_files:
-        process_image2D(image_file, output_path, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+        process_image2D(image_file, output_path, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
 
 
 def process_image2D(
@@ -66,6 +69,7 @@ def process_image2D(
     cell_proba: float,
     cell_channel: int | None,
     nucl_channel: int,
+    spot_channel: int | None,
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
 ) -> None:
@@ -88,6 +92,8 @@ def process_image2D(
         Channel index for cell segmentation, or ``None`` to skip.
     nucl_channel : int
         Channel index for nucleus segmentation.
+    spot_channel : int or None
+        Channel index for spot detection, or ``None`` to skip.
     diameter_nucl : int
         Expected nucleus diameter in pixels.
     diameter_cell : int
@@ -108,7 +114,7 @@ def process_image2D(
     print("Segmenting cells...")
     nuclei_label_origscale, cell_label_origscale = segment_cells2D(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
     print("Segmenting spots...")
-    spots_df = segment_spots2D(image_data)
+    spots_df = segment_spots2D(image_data[spot_channel]) if spot_channel is not None else pd.DataFrame()
     print("Measuring distances from spots to cell surface...")
 
     output_folder = output_path / image_path.parent.name
@@ -341,12 +347,12 @@ def compute_nuclei_stats(nuclei_label: np.ndarray) -> pd.DataFrame:
     return nuclei_stats_df
 
 def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True) -> pd.DataFrame:
-    """Detect spots in the first channel of *image_data* using Spotiflow.
+    """Detect spots in *image_data* using Spotiflow.
 
     Parameters
     ----------
-    image_data : np.ndarray, shape (C, H, W)
-        Multi-channel 2-D image array.
+    image_data : np.ndarray, shape (H, W)
+        2-D image array.
     use_cuda : bool
         Use GPU inference if available; falls back to CPU automatically.
 
@@ -363,7 +369,7 @@ def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True) -> pd.DataFra
         print("CUDA requested but not available, falling back to CPU.")
         use_cuda = False
 
-    im_spots = image_data[0]
+    im_spots = image_data
     model_spot = Spotiflow.from_pretrained(
         "general", map_location="cuda" if use_cuda else "cpu"
     )

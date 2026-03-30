@@ -52,15 +52,15 @@ def _worker_segment_spots(image_data):
 
 
 @thread_worker
-def _worker_process_image(image_path, output_folder, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50):
+def _worker_process_image(image_path, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=30, diameter_cell=50):
     from napari_cellspots._processing import process_image2D
-    process_image2D(image_path, output_folder, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    process_image2D(image_path, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
 
 
 @thread_worker
-def _worker_process_folder(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50):
+def _worker_process_folder(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=30, diameter_cell=50):
     from napari_cellspots._processing import process_folder2D
-    process_folder2D(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    process_folder2D(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
 
 
 @thread_worker
@@ -188,11 +188,6 @@ class CellspotsProcessingWidget(QWidget):
         row_nucl.addWidget(self._spinbox_nucl_ch)
         ch_layout.addLayout(row_nucl)
 
-        self._chk_segment_cells = QCheckBox("Segment cells")
-        self._chk_segment_cells.setChecked(True)
-        self._chk_segment_cells.toggled.connect(self._on_segment_cells_toggled)
-        ch_layout.addWidget(self._chk_segment_cells)
-
         row_cell = QHBoxLayout()
         row_cell.addWidget(QLabel("Cell channel:"))
         self._spinbox_cell_ch = QSpinBox()
@@ -200,6 +195,24 @@ class CellspotsProcessingWidget(QWidget):
         self._spinbox_cell_ch.setValue(0)
         row_cell.addWidget(self._spinbox_cell_ch)
         ch_layout.addLayout(row_cell)
+
+        row_spot = QHBoxLayout()
+        row_spot.addWidget(QLabel("Spot channel:"))
+        self._spinbox_spot_ch = QSpinBox()
+        self._spinbox_spot_ch.setRange(0, 31)
+        self._spinbox_spot_ch.setValue(2)
+        row_spot.addWidget(self._spinbox_spot_ch)
+        ch_layout.addLayout(row_spot)
+
+        self._chk_segment_cells = QCheckBox("Segment cells")
+        self._chk_segment_cells.setChecked(True)
+        self._chk_segment_cells.toggled.connect(self._on_segment_cells_toggled)
+        ch_layout.addWidget(self._chk_segment_cells)
+
+        self._chk_segment_spots = QCheckBox("Segment spots")
+        self._chk_segment_spots.setChecked(True)
+        self._chk_segment_spots.toggled.connect(self._on_segment_spots_toggled)
+        ch_layout.addWidget(self._chk_segment_spots)
 
         row_diam = QHBoxLayout()
         row_diam.addWidget(QLabel("Cell diameter (px):"))
@@ -278,9 +291,16 @@ class CellspotsProcessingWidget(QWidget):
     def _on_segment_cells_toggled(self, checked: bool):
         self._spinbox_cell_ch.setEnabled(checked)
 
+    def _on_segment_spots_toggled(self, checked: bool):
+        self._spinbox_spot_ch.setEnabled(checked)
+
     def _cell_channel_value(self) -> int | None:
         """Return cell channel int, or None if cell segmentation is disabled."""
         return self._spinbox_cell_ch.value() if self._chk_segment_cells.isChecked() else None
+    
+    def _spots_channel_value(self) -> int | None:
+        """Return the channel index to use for spot detection."""
+        return self._spinbox_spot_ch.value() if self._chk_segment_spots.isChecked() else None
 
     def _build_tab2(self) -> QWidget:
         tab = QWidget()
@@ -618,7 +638,7 @@ class CellspotsProcessingWidget(QWidget):
             show_error("No image loaded. Please select a file first.")
             return
         stem = self._current_stem
-        worker = _worker_segment_spots(self._current_image_data)
+        worker = _worker_segment_spots(self._current_image_data[self._spots_channel_value()])
         worker.returned.connect(lambda result: self._on_spots_done(result, stem))
         worker.errored.connect(lambda exc: show_error(f"Spot detection failed: {exc}"))
         worker.start()
@@ -653,6 +673,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_proba.value(),
             self._cell_channel_value(),
             self._spinbox_nucl_ch.value(),
+            self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
         )
@@ -681,6 +702,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_proba.value(),
             self._cell_channel_value(),
             self._spinbox_nucl_ch.value(),
+            self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
         )
