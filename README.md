@@ -20,8 +20,8 @@ You can use pixi to simplify the instatllation of the plugin and all extensions.
 1. Install pixi: https://pixi.prefix.dev/latest/installation/
 2. Create folder and copy the [`pixi.toml`](pixi.toml) and [`pixi.lock`](pixi.lock) files from this repository into it (you can clone the repo or just download the two files).
 3. Open a terminal, move to that folder and type `pixi install --all --frozen` to install the plugin and all dependencies.
-4. In the current location, launch napari with `pixi run napari` or Jupyter with `pixi run jupyter lab`.
-5. Alternatively, you can launch from any other location. For example to launch Jupyter Lab, type `pixi run --manifest-path /path/to/pixi.toml jupyter lab`.
+4. In the current location, launch napari with `pixi run -e cellspots --frozen napari` or Jupyter with `pixi run -e cellspots --frozen jupyter lab`.
+5. Alternatively, you can launch from any other location. For example to launch Jupyter Lab, type `pixi run --manifest-path /path/to/pixi.toml -e cellspots --frozen jupyter lab`.
 
 ### conda
 First create an environment for napari. For example with conda:
