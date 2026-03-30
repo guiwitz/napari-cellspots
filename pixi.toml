@@ -54,4 +54,4 @@ bioio-nd2 = "*"
 bioio-lif = "*"
 bioio-bioformats = "*"
 cellpose = "<4"
-napari-cellspots = { path = "/Users/gw18g940/Projects/Oliveira/napari-cellspots", editable = true }
+napari-cellspots = { git = "https://github.com/guiwitz/napari-cellspots.git" }
