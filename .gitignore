@@ -24,3 +24,4 @@ htmlcov/
 # egg-info
 *.egg-info/
 _version.py
+output/
