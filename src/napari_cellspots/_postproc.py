@@ -140,6 +140,7 @@ def plot_polar_and_anisotropy(
     """
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
+    import seaborn as sns
 
     theta_all = spots_df["theta_corrected"].values
     anisotropy_vals = (
@@ -155,6 +156,7 @@ def plot_polar_and_anisotropy(
 
     # --- Polar rose -----------------------------------------------------------
     ax_pol = fig.add_subplot(gs[0], projection="polar")
+    '''
     bins = np.linspace(0, 2 * np.pi, n_bins + 1)
     counts, _ = np.histogram(theta_all, bins=bins)
     bin_centers = 0.5 * (bins[:-1] + bins[1:])
@@ -164,7 +166,15 @@ def plot_polar_and_anisotropy(
         bin_centers, counts,
         width=width * 0.9,
         color="steelblue", alpha=0.75, edgecolor="white", linewidth=0.4,
+    )'''
+    sns.kdeplot(
+        spots_df,
+        x="theta_corrected", y='r',
+        color="steelblue", fill=True, ax=ax_pol
     )
+    sns.scatterplot(spots_df, x='theta_corrected', y='r',
+                    color='red', ax=ax_pol)
+
     ax_pol.set_theta_zero_location("E")
     ax_pol.set_theta_direction(1)
     ax_pol.set_title(
