@@ -423,11 +423,14 @@ def point_to_nucleus2D(
     spots_df_temp["nuclei_index"] = 0
     spots_df_temp["dists"] = np.nan
 
+    # compute hollow masks for each nucleus to get accurate distance from border
+    nucl_hollow = make_mask_hollow(nuclei_label_origscale)
+
     # pre-compute distance maps
     dist_maps = {}
     for n in np.unique(nuclei_label_origscale):
         if n!=0:
-            dist_maps[n] = distance_map_to_label(nuclei_label_origscale, n)
+            dist_maps[n] = distance_map_to_label(nucl_hollow, n)
 
 
     for idx, spot in spots_df_temp.iterrows():
@@ -449,10 +452,30 @@ def point_to_nucleus2D(
                 if dist < min_dist:
                     min_dist = dist
                     closest_nucleus = nuc_id
+                    if nuclei_label_origscale[x, y] == nuc_id:
+                        min_dist = -min_dist  # inside the nucleus, distance is negative
             spots_df_temp.at[idx, "nuclei_index"] = closest_nucleus
             spots_df_temp.at[idx, "dists"] = min_dist if closest_nucleus != 0 else np.nan
     
     return spots_df_temp
+
+def make_mask_hollow(labelled_mask: np.ndarray) -> np.ndarray:
+    """Make a labelled mask hollow by eroding and subtracting.
+
+    Parameters
+    ----------
+    mask : np.ndarray
+        Labelled mask to hollow.
+
+    Returns
+    -------
+    np.ndarray
+        Hollowed labelled mask.
+    """
+    shrink = skimage.morphology.erosion(labelled_mask)
+    nucl_hollow = np.logical_xor(labelled_mask, shrink)
+    nucl_hollow = nucl_hollow * labelled_mask
+    return nucl_hollow
 
 def compute_polar_coordinates(spots_df: pd.DataFrame, nuclei_df: pd.DataFrame) -> pd.DataFrame:
     """Add polar coordinates relative to nucleus centroids.
