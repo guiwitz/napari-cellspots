@@ -8,16 +8,19 @@ write_to = "src/napari_cellspots/_version.py"
 [project]
 name = "napari-cellspots"
 dynamic = ["version"]
-description = "Napari plugin for 2D image analysis: ICS reader, cell/spot segmentation, polar plot"
+description = "Napari plugin for spot detection in cells from microscopy images."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "BSD 3-Clause" }
 dependencies = [
     "numpy",
     "pandas",
     "scikit-image",
     "tifffile",
     "matplotlib",
+    "qtpy",
+    "cellpose<4.0.0",
+    "spotiflow",
 ]
 
 [project.entry-points."napari.manifest"]
