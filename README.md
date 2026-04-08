@@ -37,6 +37,12 @@ Then install via pip using:
 pip install git+https://github.com/guiwitz/napari-cellspots.git
 ```
 
+The ICS reader is licensed under GPL-3.0, so you will need to install the pyics library separately:
+
+```bash
+pip install pyics --find-links https://github.com/guiwitz/pyics/releases/expanded_assets/v1.0.0
+```
+
 ## Author
 
 This plugin was developed by [Guillaume Witz](https://github.com/guiwitz). Parts of the code (napari widgets and simulation) were developed using Claude Sonnet 4.6. The whole code was reviewed and edited by Guillaume Witz.
