@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QTableWidget,
@@ -129,19 +130,23 @@ class CellspotsProcessingWidget(QWidget):
 
     def _build_ui(self):
         outer = QVBoxLayout()
-        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
         tabs = QTabWidget()
         tabs.addTab(self._build_tab1(), "Processing")
         tabs.addTab(self._build_tab2(), "Distances")
-        outer.addWidget(tabs)
+
+        scroll = QScrollArea()
+        scroll.setWidget(tabs)
+        scroll.setWidgetResizable(True)
+        outer.addWidget(scroll)
         self.setLayout(outer)
 
     def _build_tab1(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 8, 16, 8)
         layout.setSpacing(6)
 
         # Input folder
@@ -305,7 +310,7 @@ class CellspotsProcessingWidget(QWidget):
     def _build_tab2(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 8, 16, 8)
         layout.setSpacing(6)
 
         self._combo_cell_layer = create_widget(annotation=napari.layers.Labels, label='Cell mask layer')
