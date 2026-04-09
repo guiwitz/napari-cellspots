@@ -43,7 +43,9 @@ from superqt import QLabeledDoubleRangeSlider
 @thread_worker
 def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50):
     from napari_cellspots._processing import segment_cells2D
-    return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel, nucl_channel=nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel, 
+                           nucl_channel=nucl_channel, diameter_nucl=diameter_nucl, 
+                           diameter_cell=diameter_cell)
 
 
 @thread_worker
@@ -53,9 +55,13 @@ def _worker_segment_spots(image_data):
 
 
 @thread_worker
-def _worker_process_image(image_path, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=30, diameter_cell=50):
+def _worker_process_image(image_path, output_folder, cell_proba, cell_channel,
+                          nucl_channel, spot_channel, diameter_nucl=30,
+                          diameter_cell=50, plane=None):
     from napari_cellspots._processing import process_image2D
-    process_image2D(image_path, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    process_image2D(image_path, output_folder, cell_proba, cell_channel,
+                    nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
+                    diameter_cell=diameter_cell, plane=plane)
 
 
 @thread_worker
@@ -117,6 +123,7 @@ class CellspotsProcessingWidget(QWidget):
         self._output_folder: Path | None = None
         self._current_image_path: Path | None = None
         self._current_image_data: np.ndarray | None = None
+        self._current_image_volume: np.ndarray | None = None
         self._current_stem: str | None = None
         self._current_spots_df: pd.DataFrame | None = None
         self._build_ui()
@@ -209,6 +216,15 @@ class CellspotsProcessingWidget(QWidget):
         row_spot.addWidget(self._spinbox_spot_ch)
         ch_layout.addLayout(row_spot)
 
+        row_plane = QHBoxLayout()
+        row_plane.addWidget(QLabel("Plane for 2D processing:"))
+        self._spinbox_plane = QSpinBox()
+        self._spinbox_plane.setRange(0, 0)
+        self._spinbox_plane.setValue(0)
+        self._spinbox_plane.valueChanged.connect(self._on_plane_changed)
+        row_plane.addWidget(self._spinbox_plane)
+        ch_layout.addLayout(row_plane)
+
         self._chk_segment_cells = QCheckBox("Segment cells")
         self._chk_segment_cells.setChecked(True)
         self._chk_segment_cells.toggled.connect(self._on_segment_cells_toggled)
@@ -292,6 +308,15 @@ class CellspotsProcessingWidget(QWidget):
         layout.addStretch()
         tab.setLayout(layout)
         return tab
+
+    def _on_plane_changed(self, plane: int):
+        if self._current_image_volume is None:
+            return
+        self._current_image_data = self._current_image_volume[:, plane, :, :]
+        # Update the image layers in-place
+        for c in range(self._current_image_volume.shape[0]):
+            layer_name = f"{self._current_stem}_{c}"
+            self._viewer.layers[layer_name].data = self._current_image_data[c, :, :]
 
     def _on_segment_cells_toggled(self, checked: bool):
         self._spinbox_cell_ch.setEnabled(checked)
@@ -399,6 +424,7 @@ class CellspotsProcessingWidget(QWidget):
         self._current_image_path = path
         self._current_stem = path.stem
         self._current_spots_df = None
+        self._current_image_volume = None
 
         try:
             if path.suffix.lower() in (".tiff", ".tif"):
@@ -410,15 +436,30 @@ class CellspotsProcessingWidget(QWidget):
             show_error(f"Failed to load {path.name}: {exc}")
             return
 
-        # Take the middle Z-slice for 2D display: (C, Z, H, W) → (C, H, W)
         if image_data.ndim == 4:
-            mid_z = image_data.shape[1] // 2
-            display_data = image_data[:, mid_z, :, :]
+            # Store full volume; use middle Z-plane for 2D processing
+            self._current_image_volume = image_data
+            n_z = image_data.shape[1]
+            mid_z = n_z // 2
+            self._spinbox_plane.blockSignals(True)
+            self._spinbox_plane.setRange(0, n_z - 1)
+            self._spinbox_plane.setValue(mid_z)
+            self._spinbox_plane.blockSignals(False)
+            self._current_image_data = image_data[:, mid_z, :, :]
+            for c in range(image_data.shape[0]):
+                layer_name = f"{self._current_stem}_{c}"
+                self._viewer.add_image(self._current_image_data[c, :, :], name=layer_name)
+            #self._viewer.dims.set_current_step(0, mid_z)
         else:
-            display_data = image_data
+            self._spinbox_plane.blockSignals(True)
+            self._spinbox_plane.setRange(0, 0)
+            self._spinbox_plane.setValue(0)
+            self._spinbox_plane.blockSignals(False)
+            self._current_image_data = image_data
+            for c in range(image_data.shape[0]):
+                layer_name = f"{self._current_stem}_{c}"
+                self._viewer.add_image(image_data[c, :, :], name=layer_name)
 
-        self._current_image_data = display_data
-        self._viewer.add_image(display_data, name=path.stem, channel_axis=0)
         self._check_and_load_outputs()
 
     def _check_and_load_outputs(self):
@@ -681,6 +722,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            plane=self._spinbox_plane.value(),
         )
         worker.returned.connect(lambda _: self._on_process_image_done(stem))
         worker.errored.connect(lambda exc: show_error(f"Processing failed: {exc}"))

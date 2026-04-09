@@ -28,6 +28,7 @@ def process_folder2D(
     spot_channel: int | None,
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
+    plane: int = None,
 ) -> None:
     """Process all images in a folder with :func:`process_image2D`.
 
@@ -49,6 +50,8 @@ def process_folder2D(
         Expected nucleus diameter in pixels.
     diameter_cell : int
         Expected cell diameter in pixels.
+    plane : int or None
+        Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
     """
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -59,7 +62,7 @@ def process_folder2D(
         + sorted(folder_path.glob("*.tif"))
     )
     for image_file in image_files:
-        process_image2D(image_file, output_path, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+        process_image2D(image_file, output_path, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell, plane=plane)
 
 
 def process_image2D(
@@ -71,6 +74,7 @@ def process_image2D(
     spot_channel: int | None,
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
+    plane: int = None,
 ) -> None:
     """Segment cells and spots in a single image and save all outputs.
 
@@ -97,6 +101,8 @@ def process_image2D(
         Expected nucleus diameter in pixels.
     diameter_cell : int
         Expected cell diameter in pixels.
+    plane : int or None
+        Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
     """
     image_path = Path(image_path)
     output_path = Path(output_path)
@@ -108,7 +114,10 @@ def process_image2D(
         import pyics
         image_data, _meta = pyics.imread(image_path.as_posix())
 
-    image_data = image_data[:, image_data.shape[1] // 2, :, :]
+    if plane is not None:
+        image_data = image_data[:, plane, :, :]
+    else:
+        image_data = image_data[:, image_data.shape[1] // 2, :, :]
 
     print("Segmenting cells...")
     nuclei_label_origscale, cell_label_origscale = segment_cells2D(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
