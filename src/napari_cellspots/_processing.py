@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import skimage.filters
+import skimage.measure
+import skimage.morphology
 import skimage.segmentation
 import skimage.transform
 import tifffile
@@ -114,10 +116,11 @@ def process_image2D(
         import pyics
         image_data, _meta = pyics.imread(image_path.as_posix())
 
-    if plane is not None:
-        image_data = image_data[:, plane, :, :]
-    else:
-        image_data = image_data[:, image_data.shape[1] // 2, :, :]
+    if image_data.ndim == 4:
+        if plane is not None:
+            image_data = image_data[:, plane, :, :]
+        else:
+            image_data = image_data[:, image_data.shape[1] // 2, :, :]
 
     print("Segmenting cells...")
     nuclei_label_origscale, cell_label_origscale = segment_cells2D(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
@@ -258,6 +261,7 @@ def segment_cells2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     scaling_factor: int = 4,
+    do_3d: bool = False,
 ) -> tuple[np.ndarray, np.ndarray | None]:
     """Segment nuclei (and optionally cells) using Cellpose.
 
@@ -295,7 +299,10 @@ def segment_cells2D(
     cellpose_version = int(cellpose.version.split(".")[0])
     print(f"Using Cellpose version {cellpose.version} (major={cellpose_version})")
 
-    im_nucl = image_data[nucl_channel, ::scaling_factor, ::scaling_factor]
+    if not do_3d:
+        im_nucl = image_data[nucl_channel, ::scaling_factor, ::scaling_factor]
+    else:
+        im_nucl = image_data[nucl_channel, :, ::scaling_factor, ::scaling_factor]
     im_nucl_gauss = skimage.filters.gaussian(im_nucl, sigma=2, preserve_range=True)
 
     cell_label_origscale = None
@@ -303,34 +310,41 @@ def segment_cells2D(
     if cellpose_version > 3:
         
         model = models.CellposeModel(gpu=True)
-        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba)
+        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=0)
         nuclei_label = out[0]
         nuclei_label_origscale = skimage.transform.resize(
             nuclei_label, output_shape=image_data.shape[1:], order=0
         )
 
         if cell_channel is not None:
-            im_cell = image_data[cell_channel, ::scaling_factor, ::scaling_factor]
+            if not do_3d:
+                im_cell = image_data[cell_channel, ::scaling_factor, ::scaling_factor]
+            else:
+                im_cell = image_data[cell_channel, :, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True)
             
-            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba)
+            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=0)
             cell_label = out_cell[0]
             cell_label_origscale = skimage.transform.resize(
                 cell_label, output_shape=image_data.shape[1:], order=0
             )
     else:
         model = models.Cellpose(gpu=True, model_type="nuclei")
-        nuclei_label = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, diameter=diameter_nucl)[0]
+        nuclei_label = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, diameter=diameter_nucl, do_3D=do_3d, z_axis=0)[0]
+        final_shape = image_data.shape[1:] # (H, W) or (Z, H, W)
         nuclei_label_origscale = skimage.transform.resize(
-            nuclei_label, output_shape=image_data.shape[1:], order=0
+            nuclei_label, output_shape=final_shape, order=0
         ).astype(np.int16)
         if cell_channel is not None:
-            im_cell = image_data[[cell_channel, nucl_channel], ::scaling_factor, ::scaling_factor]
+            if not do_3d:
+                im_cell = image_data[[cell_channel, nucl_channel], ::scaling_factor, ::scaling_factor]
+            else:
+                im_cell = image_data[[cell_channel, nucl_channel], :, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True, channel_axis=0)
             model_cell = models.Cellpose(gpu=True, model_type="cyto3")
-            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba)[0]
+            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=1)[0]
             cell_label_origscale = skimage.transform.resize(
-                cell_label, output_shape=image_data.shape[1:], order=0
+                cell_label, output_shape=final_shape, order=0
             ).astype(np.int16)
     
     return nuclei_label_origscale, cell_label_origscale

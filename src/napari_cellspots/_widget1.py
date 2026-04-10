@@ -41,11 +41,11 @@ from superqt import QLabeledDoubleRangeSlider
 # ---------------------------------------------------------------------------
 
 @thread_worker
-def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50):
+def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50, do_3d=False):
     from napari_cellspots._processing import segment_cells2D
-    return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel, 
-                           nucl_channel=nucl_channel, diameter_nucl=diameter_nucl, 
-                           diameter_cell=diameter_cell)
+    return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel,
+                           nucl_channel=nucl_channel, diameter_nucl=diameter_nucl,
+                           diameter_cell=diameter_cell, do_3d=do_3d)
 
 
 @thread_worker
@@ -216,6 +216,11 @@ class CellspotsProcessingWidget(QWidget):
         row_spot.addWidget(self._spinbox_spot_ch)
         ch_layout.addLayout(row_spot)
 
+        self._chk_do_3d = QCheckBox("3D segmentation")
+        self._chk_do_3d.setChecked(False)
+        self._chk_do_3d.toggled.connect(self._on_do_3d_toggled)
+        ch_layout.addWidget(self._chk_do_3d)
+
         row_plane = QHBoxLayout()
         row_plane.addWidget(QLabel("Plane for 2D processing:"))
         self._spinbox_plane = QSpinBox()
@@ -309,8 +314,21 @@ class CellspotsProcessingWidget(QWidget):
         tab.setLayout(layout)
         return tab
 
+    def _on_do_3d_toggled(self, checked: bool):
+        self._spinbox_plane.setEnabled(not checked)
+        # Update _current_image_data to reflect the new mode
+        if self._current_image_volume is not None:
+            if checked:
+                self._current_image_data = self._current_image_volume
+            else:
+                self._current_image_data = self._current_image_volume[
+                    :, self._spinbox_plane.value(), :, :
+                ]
+
     def _on_plane_changed(self, plane: int):
         if self._current_image_volume is None:
+            return
+        if self._chk_do_3d.isChecked():
             return
         self._current_image_data = self._current_image_volume[:, plane, :, :]
         # Update the image layers in-place
@@ -446,6 +464,8 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_plane.setValue(mid_z)
             self._spinbox_plane.blockSignals(False)
             self._current_image_data = image_data[:, mid_z, :, :]
+            if self._chk_do_3d.isChecked():
+                self._current_image_data = image_data
             for c in range(image_data.shape[0]):
                 layer_name = f"{self._current_stem}_{c}"
                 self._viewer.add_image(self._current_image_data[c, :, :], name=layer_name)
@@ -640,14 +660,17 @@ class CellspotsProcessingWidget(QWidget):
         if self._current_image_data is None:
             show_error("No image loaded. Please select a file first.")
             return
+        do_3d = self._chk_do_3d.isChecked()
+        image_to_segment = self._current_image_data  # volume when 3D, plane slice when 2D
         stem = self._current_stem
         worker = _worker_segment_cells(
-            self._current_image_data,
+            image_to_segment,
             self._spinbox_proba.value(),
             self._cell_channel_value(),
             self._spinbox_nucl_ch.value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            do_3d=do_3d,
         )
         worker.returned.connect(lambda result: self._on_cells_done(result, stem))
         worker.errored.connect(lambda exc: show_error(f"Cell segmentation failed: {exc}"))
