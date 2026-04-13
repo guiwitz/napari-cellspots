@@ -64,11 +64,11 @@ def _worker_process_image(image_path, output_folder, cell_proba, cell_channel,
                           diameter_cell=50, scaling_factor=1, pixel_size_xy=1.0,
                           pixel_size_z=1.0, plane=None, do_3D=False):
     from napari_cellspots._processing import process_image2D
-    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
     process_image2D(image_path, output_folder, cell_proba, cell_channel,
                     nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
                     diameter_cell=diameter_cell, scaling_factor=scaling_factor,
-                    xy_z_factor=xy_z_factor, plane=plane, do_3D=do_3D)
+                    pixel_size_xy=pixel_size_xy, pixel_size_z=pixel_size_z,
+                    plane=plane, do_3D=do_3D)
 
 
 @thread_worker
@@ -77,19 +77,18 @@ def _worker_process_folder(input_folder, output_folder, cell_proba,
                            diameter_nucl=30, diameter_cell=50, scaling_factor=1,
                            pixel_size_xy=1.0, pixel_size_z=1.0, do_3D=False):
     from napari_cellspots._processing import process_folder2D
-    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
     process_folder2D(input_folder, output_folder, cell_proba,
                      cell_channel, nucl_channel, spot_channel,
                      diameter_nucl=diameter_nucl,
                      diameter_cell=diameter_cell, scaling_factor=scaling_factor,
-                     xy_z_factor=xy_z_factor, do_3D=do_3D)
+                     pixel_size_xy=pixel_size_xy, pixel_size_z=pixel_size_z, do_3D=do_3D)
 
 
 @thread_worker
-def _worker_compute_distances(output_folder, image_path):
+def _worker_compute_distances(output_folder, image_path, pixel_size_xy=1.0, pixel_size_z=1.0):
     from napari_cellspots._processing import match_spots_to_nuclei
     
-    spots_df = match_spots_to_nuclei(output_folder, image_path)
+    spots_df = match_spots_to_nuclei(output_folder, image_path, pixel_size_xy=pixel_size_xy, pixel_size_z=pixel_size_z)
     return spots_df
 
 
@@ -718,8 +717,8 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
             scaling_factor=self._spinbox_scaling_factor.value(),
-            pixel_size_xy=self._spinbox_pixel_size_xy.value(),
-            pixel_size_z=self._spinbox_pixel_size_z.value(),
+            pixel_size_xy=self._spinbox_pixel_xy.value(),
+            pixel_size_z=self._spinbox_pixel_z.value(),
             do_3D=do_3D,
         )
         worker.returned.connect(lambda result: self._on_cells_done(result, stem))
@@ -917,6 +916,8 @@ class CellspotsProcessingWidget(QWidget):
         worker = _worker_compute_distances(
             self._output_folder,
             self._current_image_path,
+            pixel_size_xy=self._spinbox_pixel_xy.value(),
+            pixel_size_z=self._spinbox_pixel_z.value(),
         )
         worker.returned.connect(lambda df: self._on_distances_done(df, stem))
         worker.errored.connect(lambda exc: show_error(f"Distance computation failed: {exc}"))

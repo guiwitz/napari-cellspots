@@ -32,7 +32,8 @@ def process_folder2D(
     diameter_cell: int = 50,
     plane: int = None,
     scaling_factor: int = 4,
-    xy_z_factor: float = 1.0,
+    pixel_size_xy: float = 1.0,
+    pixel_size_z: float = 1.0,
     do_3D: bool = False,
 ) -> None:
     """Process all images in a folder with :func:`process_image2D`.
@@ -59,9 +60,10 @@ def process_folder2D(
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
     scaling_factor : int
         Downscaling factor applied before Cellpose; labels are upscaled back.
-    xy_z_factor : float
-        Factor for converting XY coordinates to Z coordinates (or vice versa).
-        xy_z_factor = voxel_size_xy / voxel_size_z.  Only used if *do_3D* is ``True``.
+    pixel_size_xy : float
+        Physical pixel size in XY dimensions (e.g. microns per pixel).
+    pixel_size_z : float
+        Physical pixel size in Z dimension (e.g. microns per pixel).
     do_3D : bool
         If ``True``, process the entire 3D stack instead of a single plane.
     """
@@ -77,7 +79,9 @@ def process_folder2D(
         process_image2D(image_file, output_path, cell_proba, cell_channel,
                         nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
                         diameter_cell=diameter_cell, plane=plane,
-                        scaling_factor=scaling_factor, xy_z_factor=xy_z_factor, do_3D=do_3D)
+                        scaling_factor=scaling_factor,
+                        pixel_size_xy=pixel_size_xy, pixel_size_z=pixel_size_z,
+                        do_3D=do_3D)
 
 
 def process_image2D(
@@ -90,7 +94,8 @@ def process_image2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     scaling_factor: int = 4,
-    xy_z_factor: float = 1.0,
+    pixel_size_xy: float = 1.0,
+    pixel_size_z: float = 1.0,
     plane: int = None,
     do_3D: bool = False,
 ) -> None:
@@ -122,9 +127,10 @@ def process_image2D(
         Expected cell diameter in pixels.
     scaling_factor : int
         Downscaling factor applied before Cellpose; labels are upscaled back.
-    xy_z_factor : float
-        Factor for converting XY coordinates to Z coordinates (or vice versa).
-        xy_z_factor = voxel_size_xy / voxel_size_z.  Only used if *do_3D* is ``True``.
+    pixel_size_xy : float
+        Physical pixel size in XY dimensions (e.g. microns per pixel).
+    pixel_size_z : float
+        Physical pixel size in Z dimension (e.g. microns per pixel).
     plane : int or None
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
     do_3D : bool
@@ -133,6 +139,8 @@ def process_image2D(
     image_path = Path(image_path)
     output_path = Path(output_path)
     print(f"Processing {image_path}")
+
+    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
 
     if image_path.suffix.lower() in (".tiff", ".tif"):
         image_data = tifffile.imread(str(image_path))
@@ -177,7 +185,12 @@ def process_image2D(
             cell_label_origscale.astype(np.uint16),
         )
 
-    spots_df = match_spots_to_nuclei(output_path, image_path, do_3D=do_3D)
+    spots_df = match_spots_to_nuclei(
+        output_path=output_path, 
+        image_path=image_path, 
+        pixel_size_xy=pixel_size_xy,
+        pixel_size_z=pixel_size_z
+    )
     
     nuclei_stats_df = compute_statistics_per_image(image_path, output_path)
 
@@ -186,7 +199,12 @@ def process_image2D(
     print(f"Results saved to {output_folder}")
 
 
-def match_spots_to_nuclei(output_path: Path | str, image_path: Path | str) -> pd.DataFrame:
+def match_spots_to_nuclei(
+        output_path: Path | str,
+        image_path: Path | str,
+        pixel_size_xy: float = 1.0,
+        pixel_size_z: float = 1.0,
+) -> pd.DataFrame:
     """Assign spots to nuclei and compute polar coordinates.
 
     Parameters
@@ -195,6 +213,10 @@ def match_spots_to_nuclei(output_path: Path | str, image_path: Path | str) -> pd
         Root output directory containing segmentation and spot files.
     image_path : Path or str
         Path to the original image (used to locate the output sub-folder).
+    pixel_size_xy : float
+        Physical pixel size in XY dimensions (e.g. microns per pixel).
+    pixel_size_z : float
+        Physical pixel size in Z dimension (e.g. microns per pixel).
 
     Returns
     -------
@@ -207,7 +229,13 @@ def match_spots_to_nuclei(output_path: Path | str, image_path: Path | str) -> pd
     nuclei_labels, cell_labels, spots_df, nuclei_df = data_loader(output_path, image_path)
     do_3D = True if nuclei_labels.ndim == 3 else False
     spots_df_temp = spots_df.copy()
-    spots_df_temp = point_to_nucleus2D(spots_df_temp, nuclei_labels, cell_labels, do_3D=do_3D)
+    spots_df_temp = point_to_nucleus2D(
+        spots_df=spots_df_temp,
+        nuclei_label_origscale=nuclei_labels,
+        cell_label=cell_labels,
+        pixel_size_xy=pixel_size_xy,
+        pixel_size_z=pixel_size_z,
+        do_3D=do_3D)
     spots_df_temp = compute_polar_coordinates(spots_df_temp, nuclei_df)
     
     spots_df_temp["source_file"] = image_path.name
@@ -467,6 +495,8 @@ def point_to_nucleus2D(
     spots_df: pd.DataFrame,
     nuclei_label_origscale: np.ndarray,
     cell_label: np.ndarray | None = None,
+    pixel_size_xy: float = 1.0,
+    pixel_size_z: float = 1.0,
     do_3D: bool = False,
 ) -> pd.DataFrame:
     """Assign each spot to its nearest nucleus and measure the distance.
@@ -480,6 +510,10 @@ def point_to_nucleus2D(
     cell_label : np.ndarray or None
         Integer label image of cells.  If ``None``, nuclei are expanded to
         act as cell proxies.
+    pixel_size_xy : float
+        Physical pixel size in XY dimensions (e.g. microns per pixel).
+    pixel_size_z : float
+        Physical pixel size in Z dimension (e.g. microns per pixel).
     do_3D : bool
         If ``True``, process the entire 3D stack instead of a single plane.
 
@@ -516,7 +550,7 @@ def point_to_nucleus2D(
     dist_maps = {}
     for n in np.unique(nuclei_label_origscale):
         if n!=0:
-            dist_maps[n] = distance_map_to_label(nucl_hollow, n)
+            dist_maps[n] = distance_map_to_label(nucl_hollow, n, pixel_size_xy, pixel_size_z)
 
 
     for idx, spot in spots_df_temp.iterrows():
@@ -537,8 +571,15 @@ def point_to_nucleus2D(
                 if nuc_id == 0:
                     continue
                 point = (z, x, y) if do_3D else (x, y)
-                dist = distance_point_to_label(point=point, labels=nuclei_label_origscale,
-                                                label_id=nuc_id, dist_map=dist_maps[nuc_id], do_3D=do_3D)
+                dist = distance_point_to_label(
+                    point=point,
+                    labels=nuclei_label_origscale,
+                    label_id=nuc_id,
+                    dist_map=dist_maps[nuc_id],
+                    pixel_size_xy=pixel_size_xy,
+                    pixel_size_z=pixel_size_z,
+                    do_3D=do_3D
+                )
                 if dist < min_dist:
                     min_dist = dist
                     closest_nucleus = nuc_id
@@ -683,6 +724,8 @@ def distance_point_to_label(
     labels: np.ndarray,
     label_id: int,
     dist_map: np.ndarray | None = None,
+    pixel_size_xy: float = 1.0,
+    pixel_size_z: float = 1.0,
     do_3D: bool = False,
 ) -> float:
     """Return the distance from *point* to the nearest pixel of *label_id*.
@@ -698,6 +741,10 @@ def distance_point_to_label(
     dist_map : np.ndarray or None
         Pre-computed distance map for *label_id*; computed on-the-fly if
         ``None``.
+    pixel_size_xy : float
+        Physical pixel size in XY dimensions (e.g. microns per pixel).
+    pixel_size_z : float
+        Physical pixel size in Z dimension (e.g. microns per pixel).
     do_3D : bool
         If ``True``, process the entire 3D stack instead of a single plane.
 
@@ -707,7 +754,7 @@ def distance_point_to_label(
         Euclidean distance in pixels, or ``nan`` if *point* is out of bounds.
     """
     if dist_map is None:
-        dist_map = distance_map_to_label(labels, label_id)
+        dist_map = distance_map_to_label(labels, label_id, pixel_size_xy, pixel_size_z)
     if do_3D:
         z, x, y = int(point[0]), int(point[1]), int(point[2])
         if 0 <= x < dist_map.shape[1] and 0 <= y < dist_map.shape[2] and 0 <= z < dist_map.shape[0]:
@@ -723,7 +770,12 @@ def distance_point_to_label(
     return dist
 
 
-def distance_map_to_label(labels: np.ndarray, label_id: int) -> np.ndarray:
+def distance_map_to_label(
+        labels: np.ndarray,
+        label_id: int,
+        pixel_size_xy: float = 1.0,
+        pixel_size_z: float = 1.0
+) -> np.ndarray:
     """Compute the Euclidean distance transform to *label_id*.
 
     Parameters
@@ -732,6 +784,10 @@ def distance_map_to_label(labels: np.ndarray, label_id: int) -> np.ndarray:
         Integer label image.
     label_id : int
         Target label.
+    pixel_size_xy : float
+        Pixel size in XY dimensions.
+    pixel_size_z : float
+        Pixel size in Z dimension.
 
     Returns
     -------
@@ -740,7 +796,11 @@ def distance_map_to_label(labels: np.ndarray, label_id: int) -> np.ndarray:
         distance to the nearest pixel of *label_id*.
     """
     mask = labels == label_id
-    return ndi.distance_transform_edt(~mask)
+    if mask.ndim == 3:
+        spacing = (pixel_size_z, pixel_size_xy, pixel_size_xy)
+    else:
+        spacing = (pixel_size_xy, pixel_size_xy)
+    return ndi.distance_transform_edt(~mask, sampling=spacing)
 
 
 # ---------------------------------------------------------------------------
