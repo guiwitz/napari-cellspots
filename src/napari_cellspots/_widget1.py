@@ -41,33 +41,38 @@ from superqt import QLabeledDoubleRangeSlider
 # ---------------------------------------------------------------------------
 
 @thread_worker
-def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50, do_3d=False):
+def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50, do_3D=False):
     from napari_cellspots._processing import segment_cells2D
     return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel,
                            nucl_channel=nucl_channel, diameter_nucl=diameter_nucl,
-                           diameter_cell=diameter_cell, do_3d=do_3d)
+                           diameter_cell=diameter_cell, do_3D=do_3D)
 
 
 @thread_worker
-def _worker_segment_spots(image_data):
+def _worker_segment_spots(image_data, do_3D=False):
     from napari_cellspots._processing import segment_spots2D
-    return segment_spots2D(image_data)
+    return segment_spots2D(image_data, do_3D=do_3D)
 
 
 @thread_worker
 def _worker_process_image(image_path, output_folder, cell_proba, cell_channel,
                           nucl_channel, spot_channel, diameter_nucl=30,
-                          diameter_cell=50, plane=None):
+                          diameter_cell=50, plane=None, do_3D=False):
     from napari_cellspots._processing import process_image2D
     process_image2D(image_path, output_folder, cell_proba, cell_channel,
                     nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
-                    diameter_cell=diameter_cell, plane=plane)
+                    diameter_cell=diameter_cell, plane=plane, do_3D=do_3D)
 
 
 @thread_worker
-def _worker_process_folder(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=30, diameter_cell=50):
+def _worker_process_folder(input_folder, output_folder, cell_proba,
+                           cell_channel, nucl_channel, spot_channel,
+                           diameter_nucl=30, diameter_cell=50, do_3D=False):
     from napari_cellspots._processing import process_folder2D
-    process_folder2D(input_folder, output_folder, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    process_folder2D(input_folder, output_folder, cell_proba,
+                     cell_channel, nucl_channel, spot_channel,
+                     diameter_nucl=diameter_nucl,
+                     diameter_cell=diameter_cell, do_3D=do_3D)
 
 
 @thread_worker
@@ -216,10 +221,10 @@ class CellspotsProcessingWidget(QWidget):
         row_spot.addWidget(self._spinbox_spot_ch)
         ch_layout.addLayout(row_spot)
 
-        self._chk_do_3d = QCheckBox("3D segmentation")
-        self._chk_do_3d.setChecked(False)
-        self._chk_do_3d.toggled.connect(self._on_do_3d_toggled)
-        ch_layout.addWidget(self._chk_do_3d)
+        self._chk_do_3D = QCheckBox("3D segmentation")
+        self._chk_do_3D.setChecked(False)
+        self._chk_do_3D.toggled.connect(self._on_do_3D_toggled)
+        ch_layout.addWidget(self._chk_do_3D)
 
         row_plane = QHBoxLayout()
         row_plane.addWidget(QLabel("Plane for 2D processing:"))
@@ -314,7 +319,7 @@ class CellspotsProcessingWidget(QWidget):
         tab.setLayout(layout)
         return tab
 
-    def _on_do_3d_toggled(self, checked: bool):
+    def _on_do_3D_toggled(self, checked: bool):
         self._spinbox_plane.setEnabled(not checked)
         # Update _current_image_data to reflect the new mode
         if self._current_image_volume is not None:
@@ -328,7 +333,7 @@ class CellspotsProcessingWidget(QWidget):
     def _on_plane_changed(self, plane: int):
         if self._current_image_volume is None:
             return
-        if self._chk_do_3d.isChecked():
+        if self._chk_do_3D.isChecked():
             return
         self._current_image_data = self._current_image_volume[:, plane, :, :]
         # Update the image layers in-place
@@ -464,7 +469,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_plane.setValue(mid_z)
             self._spinbox_plane.blockSignals(False)
             self._current_image_data = image_data[:, mid_z, :, :]
-            if self._chk_do_3d.isChecked():
+            if self._chk_do_3D.isChecked():
                 self._current_image_data = image_data
             for c in range(image_data.shape[0]):
                 layer_name = f"{self._current_stem}_{c}"
@@ -563,7 +568,11 @@ class CellspotsProcessingWidget(QWidget):
 
     def _draw_spots_layer(self, spots_df: pd.DataFrame, layer_name: str):
         """Add or replace the named Points layer with data from spots_df."""
-        coords = spots_df[["x", "y"]].values
+        do_3D = self._chk_do_3D.isChecked()
+        if do_3D:
+            coords = spots_df[["z", "x", "y"]].values
+        else:
+            coords = spots_df[["x", "y"]].values
         props: dict = {}
         if "nuclei_index" in spots_df.columns:
             props["nuclei_index"] = (
@@ -660,7 +669,7 @@ class CellspotsProcessingWidget(QWidget):
         if self._current_image_data is None:
             show_error("No image loaded. Please select a file first.")
             return
-        do_3d = self._chk_do_3d.isChecked()
+        do_3D = self._chk_do_3D.isChecked()
         image_to_segment = self._current_image_data  # volume when 3D, plane slice when 2D
         stem = self._current_stem
         worker = _worker_segment_cells(
@@ -670,7 +679,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_nucl_ch.value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
-            do_3d=do_3d,
+            do_3D=do_3D,
         )
         worker.returned.connect(lambda result: self._on_cells_done(result, stem))
         worker.errored.connect(lambda exc: show_error(f"Cell segmentation failed: {exc}"))
@@ -707,7 +716,11 @@ class CellspotsProcessingWidget(QWidget):
             show_error("No image loaded. Please select a file first.")
             return
         stem = self._current_stem
-        worker = _worker_segment_spots(self._current_image_data[self._spots_channel_value()])
+        worker = _worker_segment_spots(
+            image_data=self._current_image_data[self._spots_channel_value()],
+            do_3D=self._chk_do_3D.isChecked(),
+        )
+
         worker.returned.connect(lambda result: self._on_spots_done(result, stem))
         worker.errored.connect(lambda exc: show_error(f"Spot detection failed: {exc}"))
         worker.start()
@@ -746,6 +759,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
             plane=self._spinbox_plane.value(),
+            do_3D=self._chk_do_3D.isChecked(),
         )
         worker.returned.connect(lambda _: self._on_process_image_done(stem))
         worker.errored.connect(lambda exc: show_error(f"Processing failed: {exc}"))
@@ -775,6 +789,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            do_3D=self._chk_do_3D.isChecked(),
         )
         worker.returned.connect(lambda _: show_info("Folder processing complete."))
         worker.errored.connect(lambda exc: show_error(f"Folder processing failed: {exc}"))

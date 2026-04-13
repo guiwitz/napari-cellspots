@@ -31,6 +31,7 @@ def process_folder2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     plane: int = None,
+    do_3D: bool = False,
 ) -> None:
     """Process all images in a folder with :func:`process_image2D`.
 
@@ -54,6 +55,8 @@ def process_folder2D(
         Expected cell diameter in pixels.
     plane : int or None
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
     """
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -64,7 +67,9 @@ def process_folder2D(
         + sorted(folder_path.glob("*.tif"))
     )
     for image_file in image_files:
-        process_image2D(image_file, output_path, cell_proba, cell_channel, nucl_channel, spot_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell, plane=plane)
+        process_image2D(image_file, output_path, cell_proba, cell_channel,
+                        nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
+                        diameter_cell=diameter_cell, plane=plane, do_3D=do_3D)
 
 
 def process_image2D(
@@ -77,6 +82,7 @@ def process_image2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     plane: int = None,
+    do_3D: bool = False,
 ) -> None:
     """Segment cells and spots in a single image and save all outputs.
 
@@ -87,7 +93,8 @@ def process_image2D(
     Parameters
     ----------
     image_path : Path or str
-        Path to the input image (``.ics``, ``.tiff``, or ``.tif``).
+        Path to the input image (``.ics``, ``.tiff``, or ``.tif``). The imported image
+        is expected to have shape (C, H, W) or (C, Z, H, W).
     output_path : Path or str
         Root output directory; a sub-folder named after the image's parent
         directory is created automatically.
@@ -105,6 +112,8 @@ def process_image2D(
         Expected cell diameter in pixels.
     plane : int or None
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
     """
     image_path = Path(image_path)
     output_path = Path(output_path)
@@ -123,9 +132,16 @@ def process_image2D(
             image_data = image_data[:, image_data.shape[1] // 2, :, :]
 
     print("Segmenting cells...")
-    nuclei_label_origscale, cell_label_origscale = segment_cells2D(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=diameter_nucl, diameter_cell=diameter_cell)
+    nuclei_label_origscale, cell_label_origscale = segment_cells2D(
+        image_data, cell_proba, cell_channel, nucl_channel,
+        diameter_nucl=diameter_nucl, diameter_cell=diameter_cell, do_3D=do_3D
+    )
     print("Segmenting spots...")
-    spots_df = segment_spots2D(image_data[spot_channel]) if spot_channel is not None else pd.DataFrame()
+    if spot_channel is not None:
+        spots_df = segment_spots2D(
+            image_data[spot_channel], do_3D=do_3D)
+    else:
+        spots_df = pd.DataFrame()
     print("Measuring distances from spots to cell surface...")
 
     output_folder = output_path / image_path.parent.name
@@ -261,7 +277,7 @@ def segment_cells2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     scaling_factor: int = 4,
-    do_3d: bool = False,
+    do_3D: bool = False,
 ) -> tuple[np.ndarray, np.ndarray | None]:
     """Segment nuclei (and optionally cells) using Cellpose.
 
@@ -281,6 +297,8 @@ def segment_cells2D(
         Expected cell diameter in pixels (used for Cellpose v3 and below).
     scaling_factor : int
         Downscaling factor applied before Cellpose; labels are upscaled back.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
 
     Returns
     -------
@@ -299,7 +317,7 @@ def segment_cells2D(
     cellpose_version = int(cellpose.version.split(".")[0])
     print(f"Using Cellpose version {cellpose.version} (major={cellpose_version})")
 
-    if not do_3d:
+    if not do_3D:
         im_nucl = image_data[nucl_channel, ::scaling_factor, ::scaling_factor]
     else:
         im_nucl = image_data[nucl_channel, :, ::scaling_factor, ::scaling_factor]
@@ -310,39 +328,39 @@ def segment_cells2D(
     if cellpose_version > 3:
         
         model = models.CellposeModel(gpu=True)
-        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=0)
+        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=0)
         nuclei_label = out[0]
         nuclei_label_origscale = skimage.transform.resize(
             nuclei_label, output_shape=image_data.shape[1:], order=0
         )
 
         if cell_channel is not None:
-            if not do_3d:
+            if not do_3D:
                 im_cell = image_data[cell_channel, ::scaling_factor, ::scaling_factor]
             else:
                 im_cell = image_data[cell_channel, :, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True)
             
-            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=0)
+            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=0)
             cell_label = out_cell[0]
             cell_label_origscale = skimage.transform.resize(
                 cell_label, output_shape=image_data.shape[1:], order=0
             )
     else:
         model = models.Cellpose(gpu=True, model_type="nuclei")
-        nuclei_label = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, diameter=diameter_nucl, do_3D=do_3d, z_axis=0)[0]
+        nuclei_label = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, diameter=diameter_nucl, do_3D=do_3D, z_axis=0)[0]
         final_shape = image_data.shape[1:] # (H, W) or (Z, H, W)
         nuclei_label_origscale = skimage.transform.resize(
             nuclei_label, output_shape=final_shape, order=0
         ).astype(np.int16)
         if cell_channel is not None:
-            if not do_3d:
+            if not do_3D:
                 im_cell = image_data[[cell_channel, nucl_channel], ::scaling_factor, ::scaling_factor]
             else:
                 im_cell = image_data[[cell_channel, nucl_channel], :, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True, channel_axis=0)
             model_cell = models.Cellpose(gpu=True, model_type="cyto3")
-            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3d, z_axis=1)[0]
+            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=1)[0]
             cell_label_origscale = skimage.transform.resize(
                 cell_label, output_shape=final_shape, order=0
             ).astype(np.int16)
@@ -365,10 +383,16 @@ def compute_nuclei_stats(nuclei_label: np.ndarray) -> pd.DataFrame:
     """
     nuclei_stats = skimage.measure.regionprops_table(nuclei_label, properties=["label", "area", "centroid"])
     nuclei_stats_df = pd.DataFrame(nuclei_stats)
-    nuclei_stats_df.rename(columns={"label": "nucleus_id", "centroid-0": "cm-y", "centroid-1": "cm-x"}, inplace=True)
+    nuclei_stats_df.rename(
+        columns={
+            "label": "nucleus_id",
+            "centroid-0": "cm-y",
+            "centroid-1": "cm-x",
+            "centroid-2": "cm-z"
+            }, inplace=True)
     return nuclei_stats_df
 
-def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True) -> pd.DataFrame:
+def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True, do_3D: bool = False) -> pd.DataFrame:
     """Detect spots in *image_data* using Spotiflow.
 
     Parameters
@@ -377,11 +401,13 @@ def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True) -> pd.DataFra
         2-D image array.
     use_cuda : bool
         Use GPU inference if available; falls back to CPU automatically.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
 
     Returns
     -------
     pd.DataFrame
-        One row per detected spot with columns ``x``, ``y``, ``prob``,
+        One row per detected spot with columns ``x``, ``y``, (``z``), ``prob``,
         and ``intens``.
     """
     from spotiflow.model import Spotiflow
@@ -392,14 +418,22 @@ def segment_spots2D(image_data: np.ndarray, use_cuda: bool = True) -> pd.DataFra
         use_cuda = False
 
     im_spots = image_data
-    model_spot = Spotiflow.from_pretrained(
-        "general", map_location="cuda" if use_cuda else "cpu"
-    )
+    if do_3D:
+        model_spot = Spotiflow.from_pretrained(
+            "smfish_3d", map_location="cuda" if use_cuda else "cpu"
+        )
+    else:
+        model_spot = Spotiflow.from_pretrained(
+            "general", map_location="cuda" if use_cuda else "cpu"
+        )
     spots, details = model_spot.predict(im_spots, subpix=True, min_distance=3)
     spots_df = pd.DataFrame(spots)
     spots_df["prob"] = details.prob
     spots_df["intens"] = details.intens
-    spots_df.rename(columns={0: "x", 1: "y"}, inplace=True)
+    if do_3D:
+        spots_df.rename(columns={0: "z", 1: "x", 2: "y"}, inplace=True)
+    else:
+        spots_df.rename(columns={0: "x", 1: "y"}, inplace=True)
     return spots_df
 
 
@@ -411,6 +445,7 @@ def point_to_nucleus2D(
     spots_df: pd.DataFrame,
     nuclei_label_origscale: np.ndarray,
     cell_label: np.ndarray | None = None,
+    do_3D: bool = False,
 ) -> pd.DataFrame:
     """Assign each spot to its nearest nucleus and measure the distance.
 
@@ -423,6 +458,8 @@ def point_to_nucleus2D(
     cell_label : np.ndarray or None
         Integer label image of cells.  If ``None``, nuclei are expanded to
         act as cell proxies.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
 
     Returns
     -------
@@ -438,9 +475,13 @@ def point_to_nucleus2D(
     else:
         c2n = assign_cell_to_nucleus(nuclei_label_origscale, cell_label)
 
-    coords_spots = spots_df_temp[["x", "y"]].values
+    coords = ["z", "x", "y"] if do_3D else ["x", "y"]
+    coords_spots = spots_df_temp[coords].values
     coords_spots_int = coords_spots.astype(np.int16)
-    spots_cell_index = cell_label[coords_spots_int[:, 0], coords_spots_int[:, 1]]
+    if do_3D:
+        spots_cell_index = cell_label[coords_spots_int[:, 0], coords_spots_int[:, 1], coords_spots_int[:, 2]]
+    else:
+        spots_cell_index = cell_label[coords_spots_int[:, 0], coords_spots_int[:, 1]]
 
     spots_df_temp["cell_index"] = spots_cell_index
     spots_df_temp["nuclei_index"] = 0
@@ -459,6 +500,8 @@ def point_to_nucleus2D(
     for idx, spot in spots_df_temp.iterrows():
         cell_id = spot["cell_index"]
         x, y = int(spot["x"]), int(spot["y"])
+        if do_3D:
+            x, y, z = int(spot["x"]), int(spot["y"]), int(spot["z"])
         if cell_id == 0:
             spots_df_temp.at[idx, "nuclei_index"] = 0
         else:
@@ -471,12 +514,17 @@ def point_to_nucleus2D(
             for nuc_id in nuclei_of_cell:
                 if nuc_id == 0:
                     continue
-                dist = distance_point_to_label((x, y), nuclei_label_origscale, nuc_id, dist_map=dist_maps[nuc_id])
+                point = (z, x, y) if do_3D else (x, y)
+                dist = distance_point_to_label(point, nuclei_label_origscale, nuc_id, dist_map=dist_maps[nuc_id])
                 if dist < min_dist:
                     min_dist = dist
                     closest_nucleus = nuc_id
-                    if nuclei_label_origscale[x, y] == nuc_id:
-                        min_dist = -min_dist  # inside the nucleus, distance is negative
+                    if do_3D:
+                        if nuclei_label_origscale[z, x, y] == nuc_id:
+                            min_dist = -min_dist  # inside the nucleus, distance is negative
+                    else:
+                        if nuclei_label_origscale[x, y] == nuc_id:
+                            min_dist = -min_dist  # inside the nucleus, distance is negative
             spots_df_temp.at[idx, "nuclei_index"] = closest_nucleus
             spots_df_temp.at[idx, "dists"] = min_dist if closest_nucleus != 0 else np.nan
     
@@ -612,13 +660,14 @@ def distance_point_to_label(
     labels: np.ndarray,
     label_id: int,
     dist_map: np.ndarray | None = None,
+    do_3D: bool = False,
 ) -> float:
     """Return the distance from *point* to the nearest pixel of *label_id*.
 
     Parameters
     ----------
     point : tuple of int
-        ``(row, col)`` coordinates of the query point.
+        ``(row, col)`` or ``(z, row, col)`` coordinates of the query point.
     labels : np.ndarray
         Integer label image.
     label_id : int
@@ -626,6 +675,8 @@ def distance_point_to_label(
     dist_map : np.ndarray or None
         Pre-computed distance map for *label_id*; computed on-the-fly if
         ``None``.
+    do_3D : bool
+        If ``True``, process the entire 3D stack instead of a single plane.
 
     Returns
     -------
@@ -635,10 +686,17 @@ def distance_point_to_label(
     if dist_map is None:
         dist_map = distance_map_to_label(labels, label_id)
     x, y = int(point[0]), int(point[1])
-    if 0 <= x < dist_map.shape[0] and 0 <= y < dist_map.shape[1]:
-        dist = dist_map[x, y]
+    if do_3D:
+        z = int(point[2])
+        if 0 <= x < dist_map.shape[1] and 0 <= y < dist_map.shape[2] and 0 <= z < dist_map.shape[0]:
+            dist = dist_map[z, x, y]
+        else:
+            dist = np.nan
     else:
-        dist = np.nan
+        if 0 <= x < dist_map.shape[0] and 0 <= y < dist_map.shape[1]:
+            dist = dist_map[x, y]
+        else:
+            dist = np.nan
     return dist
 
 
