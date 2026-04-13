@@ -140,12 +140,11 @@ def process_image2D(
         import pyics
         image_data, _meta = pyics.imread(image_path.as_posix())
 
-    if image_data.ndim == 4:
+    if image_data.ndim == 4 and not do_3D:
         if plane is not None:
             image_data = image_data[:, plane, :, :]
         else:
             image_data = image_data[:, image_data.shape[1] // 2, :, :]
-
     print("Segmenting cells...")
     nuclei_label_origscale, cell_label_origscale = segment_cells2D(
         image_data, cell_proba, cell_channel, nucl_channel,
@@ -178,7 +177,7 @@ def process_image2D(
             cell_label_origscale.astype(np.uint16),
         )
 
-    spots_df = match_spots_to_nuclei(output_path, image_path)
+    spots_df = match_spots_to_nuclei(output_path, image_path, do_3D=do_3D)
     
     nuclei_stats_df = compute_statistics_per_image(image_path, output_path)
 
@@ -206,9 +205,9 @@ def match_spots_to_nuclei(output_path: Path | str, image_path: Path | str) -> pd
     print("Computing distances from spots to nuclei...")
     
     nuclei_labels, cell_labels, spots_df, nuclei_df = data_loader(output_path, image_path)
-    
+    do_3D = True if nuclei_labels.ndim == 3 else False
     spots_df_temp = spots_df.copy()
-    spots_df_temp = point_to_nucleus2D(spots_df_temp, nuclei_labels, cell_labels)
+    spots_df_temp = point_to_nucleus2D(spots_df_temp, nuclei_labels, cell_labels, do_3D=do_3D)
     spots_df_temp = compute_polar_coordinates(spots_df_temp, nuclei_df)
     
     spots_df_temp["source_file"] = image_path.name
@@ -340,7 +339,7 @@ def segment_cells2D(
     if not do_3D:
         im_nucl = image_data[nucl_channel, ::scaling_factor, ::scaling_factor]
     else:
-        z_scaling = np.floor(scaling_factor * xy_z_factor)
+        z_scaling = int(np.floor(scaling_factor * xy_z_factor))
         if z_scaling == 0:
             z_scaling = 1
         im_nucl = image_data[nucl_channel, ::z_scaling, ::scaling_factor, ::scaling_factor]
@@ -538,7 +537,8 @@ def point_to_nucleus2D(
                 if nuc_id == 0:
                     continue
                 point = (z, x, y) if do_3D else (x, y)
-                dist = distance_point_to_label(point, nuclei_label_origscale, nuc_id, dist_map=dist_maps[nuc_id])
+                dist = distance_point_to_label(point=point, labels=nuclei_label_origscale,
+                                                label_id=nuc_id, dist_map=dist_maps[nuc_id], do_3D=do_3D)
                 if dist < min_dist:
                     min_dist = dist
                     closest_nucleus = nuc_id
@@ -708,14 +708,14 @@ def distance_point_to_label(
     """
     if dist_map is None:
         dist_map = distance_map_to_label(labels, label_id)
-    x, y = int(point[0]), int(point[1])
     if do_3D:
-        z = int(point[2])
+        z, x, y = int(point[0]), int(point[1]), int(point[2])
         if 0 <= x < dist_map.shape[1] and 0 <= y < dist_map.shape[2] and 0 <= z < dist_map.shape[0]:
             dist = dist_map[z, x, y]
         else:
             dist = np.nan
     else:
+        x, y = int(point[0]), int(point[1])
         if 0 <= x < dist_map.shape[0] and 0 <= y < dist_map.shape[1]:
             dist = dist_map[x, y]
         else:
