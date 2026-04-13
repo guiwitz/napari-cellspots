@@ -41,11 +41,15 @@ from superqt import QLabeledDoubleRangeSlider
 # ---------------------------------------------------------------------------
 
 @thread_worker
-def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel, diameter_nucl=30, diameter_cell=50, do_3D=False):
+def _worker_segment_cells(image_data, cell_proba, cell_channel, nucl_channel,
+                          diameter_nucl=30, diameter_cell=50, scaling_factor=1,
+                          pixel_size_xy=1.0, pixel_size_z=1.0, do_3D=False):
     from napari_cellspots._processing import segment_cells2D
+    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
     return segment_cells2D(image_data, cell_proba, cell_channel=cell_channel,
                            nucl_channel=nucl_channel, diameter_nucl=diameter_nucl,
-                           diameter_cell=diameter_cell, do_3D=do_3D)
+                           diameter_cell=diameter_cell, scaling_factor=scaling_factor,
+                           xy_z_factor=xy_z_factor, do_3D=do_3D)
 
 
 @thread_worker
@@ -57,22 +61,28 @@ def _worker_segment_spots(image_data, do_3D=False):
 @thread_worker
 def _worker_process_image(image_path, output_folder, cell_proba, cell_channel,
                           nucl_channel, spot_channel, diameter_nucl=30,
-                          diameter_cell=50, plane=None, do_3D=False):
+                          diameter_cell=50, scaling_factor=1, pixel_size_xy=1.0,
+                          pixel_size_z=1.0, plane=None, do_3D=False):
     from napari_cellspots._processing import process_image2D
+    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
     process_image2D(image_path, output_folder, cell_proba, cell_channel,
                     nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
-                    diameter_cell=diameter_cell, plane=plane, do_3D=do_3D)
+                    diameter_cell=diameter_cell, scaling_factor=scaling_factor,
+                    xy_z_factor=xy_z_factor, plane=plane, do_3D=do_3D)
 
 
 @thread_worker
 def _worker_process_folder(input_folder, output_folder, cell_proba,
                            cell_channel, nucl_channel, spot_channel,
-                           diameter_nucl=30, diameter_cell=50, do_3D=False):
+                           diameter_nucl=30, diameter_cell=50, scaling_factor=1,
+                           pixel_size_xy=1.0, pixel_size_z=1.0, do_3D=False):
     from napari_cellspots._processing import process_folder2D
+    xy_z_factor = pixel_size_xy / pixel_size_z if do_3D else 1.0
     process_folder2D(input_folder, output_folder, cell_proba,
                      cell_channel, nucl_channel, spot_channel,
                      diameter_nucl=diameter_nucl,
-                     diameter_cell=diameter_cell, do_3D=do_3D)
+                     diameter_cell=diameter_cell, scaling_factor=scaling_factor,
+                     xy_z_factor=xy_z_factor, do_3D=do_3D)
 
 
 @thread_worker
@@ -226,6 +236,26 @@ class CellspotsProcessingWidget(QWidget):
         self._chk_do_3D.toggled.connect(self._on_do_3D_toggled)
         ch_layout.addWidget(self._chk_do_3D)
 
+        row_pxy = QHBoxLayout()
+        row_pxy.addWidget(QLabel("Pixel size XY (µm):"))
+        self._spinbox_pixel_xy = QDoubleSpinBox()
+        self._spinbox_pixel_xy.setRange(0.001, 100.0)
+        self._spinbox_pixel_xy.setSingleStep(0.01)
+        self._spinbox_pixel_xy.setDecimals(3)
+        self._spinbox_pixel_xy.setValue(1.0)
+        row_pxy.addWidget(self._spinbox_pixel_xy)
+        ch_layout.addLayout(row_pxy)
+
+        row_pz = QHBoxLayout()
+        row_pz.addWidget(QLabel("Pixel size Z (µm):"))
+        self._spinbox_pixel_z = QDoubleSpinBox()
+        self._spinbox_pixel_z.setRange(0.001, 100.0)
+        self._spinbox_pixel_z.setSingleStep(0.01)
+        self._spinbox_pixel_z.setDecimals(3)
+        self._spinbox_pixel_z.setValue(1.0)
+        row_pz.addWidget(self._spinbox_pixel_z)
+        ch_layout.addLayout(row_pz)
+
         row_plane = QHBoxLayout()
         row_plane.addWidget(QLabel("Plane for 2D processing:"))
         self._spinbox_plane = QSpinBox()
@@ -260,6 +290,14 @@ class CellspotsProcessingWidget(QWidget):
         self._spinbox_diameter_nucl.setValue(30)
         row_diam_nucl.addWidget(self._spinbox_diameter_nucl)
         ch_layout.addLayout(row_diam_nucl)
+
+        row_scaling = QHBoxLayout()
+        row_scaling.addWidget(QLabel("Scaling factor:"))
+        self._spinbox_scaling_factor = QSpinBox()
+        self._spinbox_scaling_factor.setRange(1, 20)
+        self._spinbox_scaling_factor.setValue(1)
+        row_scaling.addWidget(self._spinbox_scaling_factor)
+        ch_layout.addLayout(row_scaling)
 
         grp_ch.setLayout(ch_layout)
         layout.addWidget(grp_ch)
@@ -679,6 +717,9 @@ class CellspotsProcessingWidget(QWidget):
             self._spinbox_nucl_ch.value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            scaling_factor=self._spinbox_scaling_factor.value(),
+            pixel_size_xy=self._spinbox_pixel_size_xy.value(),
+            pixel_size_z=self._spinbox_pixel_size_z.value(),
             do_3D=do_3D,
         )
         worker.returned.connect(lambda result: self._on_cells_done(result, stem))
@@ -758,6 +799,9 @@ class CellspotsProcessingWidget(QWidget):
             self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            scaling_factor=self._spinbox_scaling_factor.value(),
+            pixel_size_xy=self._spinbox_pixel_xy.value(),
+            pixel_size_z=self._spinbox_pixel_z.value(),
             plane=self._spinbox_plane.value(),
             do_3D=self._chk_do_3D.isChecked(),
         )
@@ -789,6 +833,9 @@ class CellspotsProcessingWidget(QWidget):
             self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            scaling_factor=self._spinbox_scaling_factor.value(),
+            pixel_size_xy=self._spinbox_pixel_xy.value(),
+            pixel_size_z=self._spinbox_pixel_z.value(),
             do_3D=self._chk_do_3D.isChecked(),
         )
         worker.returned.connect(lambda _: show_info("Folder processing complete."))

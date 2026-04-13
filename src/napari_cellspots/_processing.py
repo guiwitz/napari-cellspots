@@ -31,6 +31,8 @@ def process_folder2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     plane: int = None,
+    scaling_factor: int = 4,
+    xy_z_factor: float = 1.0,
     do_3D: bool = False,
 ) -> None:
     """Process all images in a folder with :func:`process_image2D`.
@@ -55,6 +57,11 @@ def process_folder2D(
         Expected cell diameter in pixels.
     plane : int or None
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
+    scaling_factor : int
+        Downscaling factor applied before Cellpose; labels are upscaled back.
+    xy_z_factor : float
+        Factor for converting XY coordinates to Z coordinates (or vice versa).
+        xy_z_factor = voxel_size_xy / voxel_size_z.  Only used if *do_3D* is ``True``.
     do_3D : bool
         If ``True``, process the entire 3D stack instead of a single plane.
     """
@@ -69,7 +76,8 @@ def process_folder2D(
     for image_file in image_files:
         process_image2D(image_file, output_path, cell_proba, cell_channel,
                         nucl_channel, spot_channel, diameter_nucl=diameter_nucl,
-                        diameter_cell=diameter_cell, plane=plane, do_3D=do_3D)
+                        diameter_cell=diameter_cell, plane=plane,
+                        scaling_factor=scaling_factor, xy_z_factor=xy_z_factor, do_3D=do_3D)
 
 
 def process_image2D(
@@ -81,6 +89,8 @@ def process_image2D(
     spot_channel: int | None,
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
+    scaling_factor: int = 4,
+    xy_z_factor: float = 1.0,
     plane: int = None,
     do_3D: bool = False,
 ) -> None:
@@ -110,6 +120,11 @@ def process_image2D(
         Expected nucleus diameter in pixels.
     diameter_cell : int
         Expected cell diameter in pixels.
+    scaling_factor : int
+        Downscaling factor applied before Cellpose; labels are upscaled back.
+    xy_z_factor : float
+        Factor for converting XY coordinates to Z coordinates (or vice versa).
+        xy_z_factor = voxel_size_xy / voxel_size_z.  Only used if *do_3D* is ``True``.
     plane : int or None
         Plane index for 3D image processing.  If specified, only this plane is processed; otherwise, the middle plane is used.
     do_3D : bool
@@ -134,7 +149,8 @@ def process_image2D(
     print("Segmenting cells...")
     nuclei_label_origscale, cell_label_origscale = segment_cells2D(
         image_data, cell_proba, cell_channel, nucl_channel,
-        diameter_nucl=diameter_nucl, diameter_cell=diameter_cell, do_3D=do_3D
+        diameter_nucl=diameter_nucl, diameter_cell=diameter_cell,
+        scaling_factor=scaling_factor, xy_z_factor=xy_z_factor, do_3D=do_3D
     )
     print("Segmenting spots...")
     if spot_channel is not None:
@@ -277,6 +293,7 @@ def segment_cells2D(
     diameter_nucl: int = 30,
     diameter_cell: int = 50,
     scaling_factor: int = 4,
+    xy_z_factor: float = 1.0,
     do_3D: bool = False,
 ) -> tuple[np.ndarray, np.ndarray | None]:
     """Segment nuclei (and optionally cells) using Cellpose.
@@ -297,6 +314,9 @@ def segment_cells2D(
         Expected cell diameter in pixels (used for Cellpose v3 and below).
     scaling_factor : int
         Downscaling factor applied before Cellpose; labels are upscaled back.
+    xy_z_factor : float
+        Factor for converting XY coordinates to Z coordinates (or vice versa).
+        xy_z_factor = voxel_size_xy / voxel_size_z.  Only used if *do_3D* is ``True``.
     do_3D : bool
         If ``True``, process the entire 3D stack instead of a single plane.
 
@@ -320,7 +340,10 @@ def segment_cells2D(
     if not do_3D:
         im_nucl = image_data[nucl_channel, ::scaling_factor, ::scaling_factor]
     else:
-        im_nucl = image_data[nucl_channel, :, ::scaling_factor, ::scaling_factor]
+        z_scaling = np.floor(scaling_factor * xy_z_factor)
+        if z_scaling == 0:
+            z_scaling = 1
+        im_nucl = image_data[nucl_channel, ::z_scaling, ::scaling_factor, ::scaling_factor]
     im_nucl_gauss = skimage.filters.gaussian(im_nucl, sigma=2, preserve_range=True)
 
     cell_label_origscale = None
@@ -338,7 +361,7 @@ def segment_cells2D(
             if not do_3D:
                 im_cell = image_data[cell_channel, ::scaling_factor, ::scaling_factor]
             else:
-                im_cell = image_data[cell_channel, :, ::scaling_factor, ::scaling_factor]
+                im_cell = image_data[cell_channel, ::z_scaling, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True)
             
             out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=0)
@@ -357,7 +380,7 @@ def segment_cells2D(
             if not do_3D:
                 im_cell = image_data[[cell_channel, nucl_channel], ::scaling_factor, ::scaling_factor]
             else:
-                im_cell = image_data[[cell_channel, nucl_channel], :, ::scaling_factor, ::scaling_factor]
+                im_cell = image_data[[cell_channel, nucl_channel], ::z_scaling, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True, channel_axis=0)
             model_cell = models.Cellpose(gpu=True, model_type="cyto3")
             cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=1)[0]
