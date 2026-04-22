@@ -372,13 +372,13 @@ def segment_cells2D(
             z_scaling = 1
         im_nucl = image_data[nucl_channel, ::z_scaling, ::scaling_factor, ::scaling_factor]
     im_nucl_gauss = skimage.filters.gaussian(im_nucl, sigma=2, preserve_range=True)
-
+    
     cell_label_origscale = None
 
     if cellpose_version > 3:
-        
+        z_axis = 0 if do_3D else None
         model = models.CellposeModel(gpu=True)
-        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=0)
+        out = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=z_axis)
         nuclei_label = out[0]
         nuclei_label_origscale = skimage.transform.resize(
             nuclei_label, output_shape=image_data.shape[1:], order=0
@@ -391,12 +391,13 @@ def segment_cells2D(
                 im_cell = image_data[cell_channel, ::z_scaling, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True)
             
-            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=0)
+            out_cell = model.eval(im_cell_gauss, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=z_axis)
             cell_label = out_cell[0]
             cell_label_origscale = skimage.transform.resize(
                 cell_label, output_shape=image_data.shape[1:], order=0
             )
     else:
+        z_axis = 0 if do_3D else None
         model = models.Cellpose(gpu=True, model_type="nuclei")
         nuclei_label = model.eval(im_nucl_gauss, cellprob_threshold=cell_proba, diameter=diameter_nucl, do_3D=do_3D, z_axis=0)[0]
         final_shape = image_data.shape[1:] # (H, W) or (Z, H, W)
@@ -404,13 +405,14 @@ def segment_cells2D(
             nuclei_label, output_shape=final_shape, order=0
         ).astype(np.int16)
         if cell_channel is not None:
+            z_axis = 1 if do_3D else None
             if not do_3D:
                 im_cell = image_data[[cell_channel, nucl_channel], ::scaling_factor, ::scaling_factor]
             else:
                 im_cell = image_data[[cell_channel, nucl_channel], ::z_scaling, ::scaling_factor, ::scaling_factor]
             im_cell_gauss = skimage.filters.gaussian(im_cell, sigma=2, preserve_range=True, channel_axis=0)
             model_cell = models.Cellpose(gpu=True, model_type="cyto3")
-            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=1)[0]
+            cell_label = model_cell.eval(im_cell_gauss, channels=[1,2], diameter=diameter_cell, cellprob_threshold=cell_proba, do_3D=do_3D, z_axis=z_axis)[0]
             cell_label_origscale = skimage.transform.resize(
                 cell_label, output_shape=final_shape, order=0
             ).astype(np.int16)
