@@ -74,13 +74,13 @@ def _worker_process_image(image_path, output_folder, cell_proba, cell_channel,
 @thread_worker
 def _worker_process_folder(input_folder, output_folder, cell_proba,
                            cell_channel, nucl_channel, spot_channel,
-                           diameter_nucl=30, diameter_cell=50, scaling_factor=1,
+                           diameter_nucl=30, diameter_cell=50, plane=None, scaling_factor=1,
                            pixel_size_xy=1.0, pixel_size_z=1.0, do_3D=False):
     from napari_cellspots._processing import process_folder2D
     process_folder2D(input_folder, output_folder, cell_proba,
                      cell_channel, nucl_channel, spot_channel,
-                     diameter_nucl=diameter_nucl,
-                     diameter_cell=diameter_cell, scaling_factor=scaling_factor,
+                     diameter_nucl=diameter_nucl, diameter_cell=diameter_cell,
+                     plane=plane, scaling_factor=scaling_factor,
                      pixel_size_xy=pixel_size_xy, pixel_size_z=pixel_size_z, do_3D=do_3D)
 
 
@@ -832,6 +832,7 @@ class CellspotsProcessingWidget(QWidget):
             self._spots_channel_value(),
             self._spinbox_diameter_nucl.value(),
             self._spinbox_diameter_cell.value(),
+            plane=self._spinbox_plane.value(),
             scaling_factor=self._spinbox_scaling_factor.value(),
             pixel_size_xy=self._spinbox_pixel_xy.value(),
             pixel_size_z=self._spinbox_pixel_z.value(),
