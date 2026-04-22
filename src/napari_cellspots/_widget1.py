@@ -305,10 +305,10 @@ class CellspotsProcessingWidget(QWidget):
         grp_proc = QGroupBox("Processing")
         proc_layout = QVBoxLayout()
         for label, slot in [
-            ("Segment cells (2D)", self._run_segment_cells),
-            ("Segment spots (2D)", self._run_segment_spots),
-            ("Process image (2D)", self._run_process_image),
-            ("Process folder (2D)", self._run_process_folder),
+            ("Segment cells", self._run_segment_cells),
+            ("Segment spots", self._run_segment_spots),
+            ("Process image", self._run_process_image),
+            ("Process folder", self._run_process_folder),
         ]:
             btn = QPushButton(label)
             btn.clicked.connect(slot)
