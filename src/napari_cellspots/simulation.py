@@ -10,6 +10,7 @@ def simulate_image(
     symmetry_factor: float = 0.0,
     n_cells: int = 10,
     n_spots_per_cell: int = 20,
+    nucleus_edge_sharpness: float = 4.0,
     rng_seed: int | None = None,
 ) -> np.ndarray:
     """Generate a synthetic two-channel fluorescence image.
@@ -41,6 +42,10 @@ def simulate_image(
         Number of cells (nuclei) to place.
     n_spots_per_cell:
         Number of spots placed around each nucleus.
+    nucleus_edge_sharpness:
+        Controls how abruptly the nucleus boundary transitions. Higher values
+        produce a crisper edge. The default (``4.0``) gives a smooth but
+        well-defined boundary; values above ~10 make the edge nearly step-like.
     rng_seed:
         Optional seed for the random-number generator (for reproducibility).
 
@@ -86,7 +91,7 @@ def simulate_image(
 
         # --- channel 0: nucleus blob ----------------------------------------
         # tanh profile: flat top inside the nucleus, sharp boundary
-        edge_sigma = max(nucleus_sigma * 0.25, 0.8)
+        edge_sigma = max(nucleus_sigma / nucleus_edge_sharpness, 0.5)
         nucleus_blob = 0.5 * (1.0 - np.tanh((dist - nucleus_radius_px) / edge_sigma))
         ch0 += nucleus_blob
 
@@ -155,6 +160,7 @@ def simulate_image3D(
     symmetry_factor: float = 0.0,
     n_cells: int = 10,
     n_spots_per_cell: int = 20,
+    nucleus_edge_sharpness: float = 4.0,
     rng_seed: int | None = None,
 ) -> np.ndarray:
     """Generate a synthetic two-channel 3-D fluorescence volume.
@@ -187,6 +193,10 @@ def simulate_image3D(
         Number of cells (nuclei) to place.
     n_spots_per_cell:
         Number of spots placed around each nucleus.
+    nucleus_edge_sharpness:
+        Controls how abruptly the nucleus boundary transitions. Higher values
+        produce a crisper edge. The default (``4.0``) gives a smooth but
+        well-defined boundary; values above ~10 make the edge nearly step-like.
     rng_seed:
         Optional seed for the random-number generator (for reproducibility).
 
@@ -239,7 +249,7 @@ def simulate_image3D(
         dist = np.sqrt(dz ** 2 + dy ** 2 + dx ** 2)
 
         # --- channel 0: nucleus blob ----------------------------------------
-        edge_sigma = max(nucleus_sigma * 0.25, 0.8)
+        edge_sigma = max(nucleus_sigma / nucleus_edge_sharpness, 0.5)
         nucleus_blob = 0.5 * (1.0 - np.tanh((dist - nucleus_radius_px) / edge_sigma))
         ch0 += nucleus_blob
 
